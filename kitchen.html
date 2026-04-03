@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UMAMI — Kitchen Display</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root{
+      --bg:#0a0a0a;--surface:#111;--card:#161616;--border:#222;
+      --accent:#f5c518;--text:#f0f0f0;--muted:#666;
+      --pending:#f5c518;--cooking:#e8602c;--ready:#27c06a;--served:#3a3a3a;
+      --available:#27c06a;--occupied:#e8602c;--dirty:#f5c518;--closed:#444;
+      --radius:12px;--font-head:'Bebas Neue',Impact,sans-serif;--font-body:'DM Sans',sans-serif;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--bg);color:var(--text);font-family:var(--font-body);min-height:100vh}
+
+    /* ── TOP BAR ── */
+    .top-bar{background:var(--surface);border-bottom:2px solid var(--accent);padding:0 28px;display:flex;align-items:center;justify-content:space-between;height:64px;gap:16px}
+    .kitchen-logo{font-family:var(--font-head);font-size:2rem;letter-spacing:0.08em;color:var(--accent)}
+    .kitchen-logo span{color:var(--muted);font-size:1rem;letter-spacing:0.2em;margin-left:10px}
+    #clock{font-family:var(--font-head);font-size:1.8rem;color:var(--text);letter-spacing:0.1em}
+    .top-status{display:flex;align-items:center;gap:8px;font-size:0.78rem;color:var(--muted)}
+    .status-dot{width:9px;height:9px;border-radius:50%;background:var(--muted);transition:background 0.4s}
+    .status-dot.connected{background:var(--ready);box-shadow:0 0 8px var(--ready)}
+    .status-dot.disconnected{background:#c0392b}
+
+    /* ── MAIN LAYOUT: orders left, table map right ── */
+    .kitchen-layout{display:grid;grid-template-columns:1fr 260px;min-height:calc(100vh - 64px)}
+    @media(max-width:900px){.kitchen-layout{grid-template-columns:1fr}}
+
+    /* ── LEFT: ORDERS AREA ── */
+    .orders-col{border-right:1px solid var(--border)}
+
+    /* Stats / filter tabs */
+    .stats-bar{display:flex;background:var(--surface);border-bottom:1px solid var(--border)}
+    .stat{flex:1;padding:12px 8px;text-align:center;border-right:1px solid var(--border);cursor:pointer;transition:background 0.15s;position:relative}
+    .stat:last-child{border-right:none}
+    .stat:hover{background:#1a1a1a}
+    .stat.active::after{content:'';position:absolute;bottom:0;left:0;right:0;height:3px;background:var(--accent)}
+    .stat-num{font-family:var(--font-head);font-size:1.8rem;line-height:1}
+    .stat-label{font-size:0.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-top:2px}
+    .num-all{color:var(--text)} .num-pending{color:var(--pending)} .num-cooking{color:var(--cooking)} .num-ready{color:var(--ready)} .num-served{color:var(--served)}
+
+    .orders-grid-wrap{padding:16px}
+    .orders-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+    .no-orders{grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--muted)}
+    .no-orders .big{font-size:3.5rem;margin-bottom:10px;display:block}
+
+    /* Order cards */
+    .order-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;animation:cardIn 0.3s ease;display:flex;flex-direction:column}
+    @keyframes cardIn{from{opacity:0;transform:translateY(14px) scale(0.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+    .card-stripe{height:4px;background:var(--pending);transition:background 0.4s}
+    .card-stripe.cooking{background:var(--cooking)} .card-stripe.ready{background:var(--ready)} .card-stripe.served{background:var(--served)}
+    .card-header{display:flex;justify-content:space-between;align-items:flex-start;padding:12px 14px 8px;border-bottom:1px solid var(--border)}
+    .card-order-id{font-family:var(--font-head);font-size:1.4rem;letter-spacing:0.06em;color:var(--accent);line-height:1}
+    .card-order-type{display:inline-flex;align-items:center;gap:4px;font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;padding:2px 8px;border-radius:5px;margin-top:4px}
+    .type-eatin{background:rgba(39,192,106,0.15);color:var(--ready)}
+    .type-takeout{background:rgba(232,96,44,0.15);color:var(--cooking)}
+    .card-table{font-size:0.8rem;color:var(--text);margin-top:2px;font-weight:500}
+    .card-time-block{text-align:right}
+    .card-time{font-size:0.72rem;color:var(--muted)}
+    .card-elapsed{font-family:var(--font-head);font-size:1rem;letter-spacing:0.05em;color:var(--text);margin-top:2px}
+    .card-elapsed.warn{color:var(--cooking)} .card-elapsed.alert{color:#e74c3c}
+    .card-items{padding:10px 14px;flex:1}
+    .card-item{display:flex;align-items:center;gap:7px;padding:4px 0;border-bottom:1px solid #1e1e1e;font-size:0.88rem}
+    .card-item:last-child{border-bottom:none}
+    .card-item-label{font-size:0.62rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.07em;background:#1e1e1e;padding:2px 5px;border-radius:3px;white-space:nowrap}
+    .card-footer{padding:8px 12px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:7px}
+    .status-pill{font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;padding:3px 9px;border-radius:20px}
+    .pill-pending{background:rgba(245,197,24,0.15);color:var(--pending)}
+    .pill-cooking{background:rgba(232,96,44,0.15);color:var(--cooking)}
+    .pill-ready{background:rgba(39,192,106,0.15);color:var(--ready)}
+    .pill-served{background:rgba(58,58,58,0.4);color:var(--muted)}
+    .card-actions{display:flex;gap:5px}
+    .action-btn{padding:5px 10px;border:none;border-radius:5px;font-family:var(--font-body);font-weight:600;font-size:0.76rem;cursor:pointer;transition:opacity 0.15s,transform 0.1s}
+    .action-btn:hover{opacity:0.85;transform:scale(1.04)}
+    .action-btn:active{transform:scale(0.97)}
+    .btn-start{background:var(--cooking);color:#fff}
+    .btn-ready{background:var(--ready);color:#fff}
+    .btn-served{background:#444;color:var(--text)}
+    .btn-delete{background:transparent;border:1px solid #333;color:var(--muted);padding:5px 7px}
+    .btn-delete:hover{border-color:#e74c3c;color:#e74c3c}
+
+    /* ── RIGHT: TABLE MAP PANEL ── */
+    .table-map-col{background:var(--surface);border-left:1px solid var(--border);padding:16px;overflow-y:auto}
+    .map-title{font-family:var(--font-head);font-size:1.2rem;letter-spacing:0.06em;color:var(--accent);margin-bottom:12px}
+
+    /* Compact table tiles for kitchen sidebar */
+    .map-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+    .map-tile{background:var(--card);border:2px solid var(--border);border-radius:8px;padding:10px 8px;text-align:center;cursor:pointer;transition:border-color 0.15s,transform 0.12s;position:relative}
+    .map-tile:hover{transform:translateY(-2px)}
+    .map-tile.available{border-color:var(--available)}
+    .map-tile.occupied{border-color:var(--occupied)}
+    .map-tile.dirty{border-color:var(--dirty)}
+    .map-tile.closed{border-color:var(--closed);opacity:0.5}
+    .map-tile-name{font-family:var(--font-head);font-size:0.95rem;letter-spacing:0.04em;display:block;margin-bottom:3px}
+    .map-tile-badge{font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;padding:2px 6px;border-radius:10px}
+    .badge-available{background:rgba(39,192,106,0.15);color:var(--available)}
+    .badge-occupied{background:rgba(232,96,44,0.15);color:var(--occupied)}
+    .badge-dirty{background:rgba(245,197,24,0.15);color:var(--dirty)}
+    .badge-closed{background:rgba(68,68,68,0.3);color:var(--muted)}
+    .map-order-count{position:absolute;top:4px;right:4px;background:var(--occupied);color:#fff;font-size:0.6rem;font-weight:700;width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+
+    /* Quick status buttons for kitchen staff */
+    .map-tile-actions{display:flex;gap:3px;margin-top:6px;justify-content:center}
+    .map-tile-btn{font-size:0.6rem;padding:2px 5px;border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:3px;cursor:pointer;font-family:var(--font-body);transition:all 0.15s;white-space:nowrap}
+    .map-tile-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+    /* Legend */
+    .map-legend{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:12px}
+    .map-legend-item{display:flex;align-items:center;gap:5px;font-size:0.68rem;color:var(--muted)}
+    .map-legend-dot{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+
+    /* New order flash */
+    .new-order-flash{position:fixed;inset:0;pointer-events:none;z-index:999;background:rgba(245,197,24,0.08);animation:flashOut 0.7s ease forwards}
+    @keyframes flashOut{from{opacity:1}to{opacity:0}}
+
+    ::-webkit-scrollbar{width:5px}
+    ::-webkit-scrollbar-track{background:transparent}
+    ::-webkit-scrollbar-thumb{background:#333;border-radius:3px}
+  </style>
+</head>
+<body>
+
+<div class="top-bar">
+  <div class="kitchen-logo">UMAMI <span>KITCHEN</span></div>
+  <div id="clock">00:00:00</div>
+  <div class="top-status">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text">Connecting…</span>
+  </div>
+</div>
+
+<div class="kitchen-layout">
+
+  <!-- LEFT: Orders -->
+  <div class="orders-col">
+    <div class="stats-bar">
+      <div class="stat active" id="tab-all"    onclick="setFilter('all')">   <div class="stat-num num-all"     id="cnt-all">0</div>    <div class="stat-label">All</div></div>
+      <div class="stat" id="tab-pending"  onclick="setFilter('pending')"><div class="stat-num num-pending" id="cnt-pending">0</div><div class="stat-label">⏳ Pending</div></div>
+      <div class="stat" id="tab-cooking"  onclick="setFilter('cooking')"><div class="stat-num num-cooking" id="cnt-cooking">0</div><div class="stat-label">🔥 Cooking</div></div>
+      <div class="stat" id="tab-ready"    onclick="setFilter('ready')">  <div class="stat-num num-ready"   id="cnt-ready">0</div>  <div class="stat-label">✅ Ready</div></div>
+      <div class="stat" id="tab-served"   onclick="setFilter('served')"> <div class="stat-num num-served"  id="cnt-served">0</div> <div class="stat-label">🍽 Served</div></div>
+    </div>
+    <div class="orders-grid-wrap">
+      <div class="orders-grid" id="orders-grid">
+        <div class="no-orders"><span class="big">👨‍🍳</span><p>Waiting for orders…</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: Table map -->
+  <div class="table-map-col">
+    <div class="map-title">🗺 Tables</div>
+    <div class="map-legend">
+      <div class="map-legend-item"><div class="map-legend-dot" style="background:var(--available)"></div>Available</div>
+      <div class="map-legend-item"><div class="map-legend-dot" style="background:var(--occupied)"></div>Occupied</div>
+      <div class="map-legend-item"><div class="map-legend-dot" style="background:var(--dirty)"></div>Needs Clean</div>
+      <div class="map-legend-item"><div class="map-legend-dot" style="background:var(--closed)"></div>Closed</div>
+    </div>
+    <div class="map-grid" id="map-grid"><!-- rendered by JS --></div>
+  </div>
+
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<script>
+  /* ── FIREBASE ── */
+  const firebaseConfig={
+    apiKey:"AIzaSyD2yOZznSm0jpmq4EaPA95JnfvcZWN2Ec0",
+    authDomain:"create-b4da9.firebaseapp.com",
+    databaseURL:"https://create-b4da9-default-rtdb.firebaseio.com",
+    projectId:"create-b4da9",
+    storageBucket:"create-b4da9.firebasestorage.app",
+    messagingSenderId:"301948845653",
+    appId:"1:301948845653:web:c5ed5b440727bf1ecbdedc"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db=firebase.database();
+  db.ref('.info/connected').on('value',snap=>{
+    const ok=snap.val();
+    document.getElementById('status-dot').className='status-dot '+(ok?'connected':'disconnected');
+    document.getElementById('status-text').textContent=ok?'Live · Auto-updating':'Offline';
+  });
+
+  /* ── TABLES CONFIG ── */
+  const TABLES=[
+    {id:'table-1',name:'Table 1'},{id:'table-2',name:'Table 2'},
+    {id:'table-3',name:'Table 3'},{id:'table-4',name:'Table 4'},
+    {id:'table-5',name:'Table 5'},{id:'table-6',name:'Table 6'},
+    {id:'table-7',name:'Table 7'},{id:'table-8',name:'Table 8'},
+  ];
+  const tableStatuses={};
+  TABLES.forEach(t=>{tableStatuses[t.id]={status:'available',table:t.name,activeOrders:0};});
+
+  /* ── STATE ── */
+  const allOrders={};
+  let activeFilter='all', isFirstLoad=true;
+
+  /* ── CLOCK ── */
+  function updateClock(){
+    const n=new Date();
+    document.getElementById('clock').textContent=
+      n.getHours().toString().padStart(2,'00')+':'+
+      n.getMinutes().toString().padStart(2,'00')+':'+
+      n.getSeconds().toString().padStart(2,'00');
+  }
+  setInterval(updateClock,1000); updateClock();
+
+  /* ── HELPERS ── */
+  function elapsedStr(ts){
+    const s=Math.floor((Date.now()-ts)/1000);
+    if(s<60)return s+'s';
+    const m=Math.floor(s/60),sec=s%60;
+    if(m<60)return m+'m '+sec+'s';
+    return Math.floor(m/60)+'h '+(m%60)+'m';
+  }
+  function elapsedClass(ts){
+    const m=(Date.now()-ts)/60000;
+    if(m>20)return 'alert'; if(m>10)return 'warn'; return '';
+  }
+
+  /* ── FILTER ── */
+  function setFilter(f){
+    activeFilter=f;
+    ['all','pending','cooking','ready','served'].forEach(s=>{
+      document.getElementById('tab-'+s).classList.toggle('active',s===f);
+    });
+    renderOrders();
+  }
+
+  /* ── RENDER ORDERS ── */
+  function renderOrders(){
+    const grid=document.getElementById('orders-grid');
+    let list=Object.entries(allOrders);
+    if(activeFilter!=='all') list=list.filter(([,o])=>o.status===activeFilter);
+    list.sort(([,a],[,b])=>{
+      if(a.status==='served'&&b.status!=='served')return 1;
+      if(b.status==='served'&&a.status!=='served')return -1;
+      return a.timestamp-b.timestamp;
+    });
+    const counts={all:0,pending:0,cooking:0,ready:0,served:0};
+    Object.values(allOrders).forEach(o=>{counts.all++;counts[o.status]++;});
+    Object.keys(counts).forEach(k=>{document.getElementById('cnt-'+k).textContent=counts[k];});
+    if(list.length===0){
+      grid.innerHTML=`<div class="no-orders"><span class="big">👨‍🍳</span><p>${activeFilter==='all'?'No orders yet…':'No '+activeFilter+' orders'}</p></div>`;
+      return;
+    }
+    grid.innerHTML='';
+    list.forEach(([key,o])=>{
+      const isTakeout=o.orderType==='takeout';
+      const card=document.createElement('div'); card.className='order-card'; card.id='card-'+key;
+      let itemsHTML='';
+      (o.items||[]).forEach(item=>{
+        itemsHTML+=`<div class="card-item"><span class="card-item-label">${item.label}</span><span>${item.emoji||''} ${item.name}</span></div>`;
+      });
+      let actionsHTML='';
+      if(o.status==='pending') actionsHTML+=`<button class="action-btn btn-start" onclick="updateStatus('${key}','cooking')">🔥 Start</button>`;
+      if(o.status==='cooking') actionsHTML+=`<button class="action-btn btn-ready" onclick="updateStatus('${key}','ready')">✅ Ready</button>`;
+      if(o.status==='ready')   actionsHTML+=`<button class="action-btn btn-served" onclick="updateStatus('${key}','served')">${isTakeout?'🥡 Handed':'🍽 Served'}</button>`;
+      actionsHTML+=`<button class="action-btn btn-delete" onclick="deleteOrder('${key}')" title="Remove">🗑</button>`;
+      card.innerHTML=`
+        <div class="card-stripe ${o.status}"></div>
+        <div class="card-header">
+          <div>
+            <div class="card-order-id">#${o.orderId}</div>
+            <div class="card-order-type ${isTakeout?'type-takeout':'type-eatin'}">${isTakeout?'🥡 Take Out':'🪑 Eat Here'}</div>
+            ${!isTakeout?`<div class="card-table">${o.table}</div>`:''}
+          </div>
+          <div class="card-time-block">
+            <div class="card-time">${o.time}</div>
+            <div class="card-elapsed ${elapsedClass(o.timestamp)}" id="elapsed-${key}">${elapsedStr(o.timestamp)}</div>
+          </div>
+        </div>
+        <div class="card-items">${itemsHTML}</div>
+        <div class="card-footer">
+          <span class="status-pill pill-${o.status}">${o.status}</span>
+          <div class="card-actions">${actionsHTML}</div>
+        </div>`;
+      grid.appendChild(card);
+    });
+  }
+
+  /* ── RENDER TABLE MAP ── */
+  function renderTableMap(){
+    const grid=document.getElementById('map-grid');
+    grid.innerHTML='';
+    TABLES.forEach(t=>{
+      const state=tableStatuses[t.id]||{status:'available'};
+      const s=state.status||'available';
+      const cnt=state.activeOrders||0;
+      const tile=document.createElement('div'); tile.className='map-tile '+s;
+      tile.innerHTML=`
+        ${s==='occupied'&&cnt>0?`<div class="map-order-count">${cnt}</div>`:''}
+        <span class="map-tile-name">${t.name}</span>
+        <span class="map-tile-badge badge-${s}">${s==='dirty'?'clean':s}</span>
+        <div class="map-tile-actions">
+          ${s!=='available'?`<button class="map-tile-btn" onclick="setStatus('${t.id}','${t.name}','available')">✓ Free</button>`:''}
+          ${s!=='dirty'?`<button class="map-tile-btn" onclick="setStatus('${t.id}','${t.name}','dirty')">🧹</button>`:''}
+        </div>`;
+      grid.appendChild(tile);
+    });
+  }
+
+  function setStatus(tableId,tableName,newStatus){
+    db.ref('tables/'+tableId).update({status:newStatus,table:tableName,updatedAt:Date.now()});
+  }
+  function updateStatus(key,newStatus){ db.ref('orders/'+key).update({status:newStatus}); }
+  function deleteOrder(key){ if(confirm('Remove this order?')) db.ref('orders/'+key).remove(); }
+
+  /* ── ELAPSED TIMERS ── */
+  setInterval(()=>{
+    Object.entries(allOrders).forEach(([key,o])=>{
+      if(o.status==='served') return;
+      const el=document.getElementById('elapsed-'+key);
+      if(el){el.textContent=elapsedStr(o.timestamp);el.className='card-elapsed '+elapsedClass(o.timestamp);}
+    });
+  },1000);
+
+  /* ── FIREBASE LISTENERS ── */
+  db.ref('orders').on('child_added',snap=>{
+    allOrders[snap.key]=snap.val();
+    if(!isFirstLoad){
+      const flash=document.createElement('div'); flash.className='new-order-flash';
+      document.body.appendChild(flash); setTimeout(()=>flash.remove(),800);
+      try{
+        const ctx=new AudioContext(), osc=ctx.createOscillator(), gain=ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.value=880; gain.gain.setValueAtTime(0.3,ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.4);
+        osc.start(); osc.stop(ctx.currentTime+0.4);
+      }catch(e){}
+    }
+    renderOrders(); updateTableCounts();
+  });
+  db.ref('orders').on('child_changed',snap=>{allOrders[snap.key]=snap.val(); renderOrders(); updateTableCounts();});
+  db.ref('orders').on('child_removed',snap=>{delete allOrders[snap.key]; renderOrders(); updateTableCounts();});
+  db.ref('orders').once('value',()=>setTimeout(()=>isFirstLoad=false,600));
+
+  /* ── TABLE STATUS LISTENER ── */
+  db.ref('tables').on('value',snap=>{
+    const data=snap.val()||{};
+    TABLES.forEach(t=>{if(data[t.id])tableStatuses[t.id]={...tableStatuses[t.id],...data[t.id]};});
+    renderTableMap();
+  });
+
+  /* ── UPDATE TABLE ORDER COUNTS ── */
+  function updateTableCounts(){
+    TABLES.forEach(t=>{tableStatuses[t.id].activeOrders=0;});
+    Object.values(allOrders).forEach(order=>{
+      if(!order.table||order.orderType==='takeout') return;
+      if(order.status==='served'||order.status==='cancelled') return;
+      const found=TABLES.find(t=>t.name.toLowerCase()===order.table.toLowerCase());
+      if(found) tableStatuses[found.id].activeOrders=(tableStatuses[found.id].activeOrders||0)+1;
+    });
+    renderTableMap();
+  }
+
+  renderTableMap();
+</script>
+</body>
+</html>

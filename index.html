@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UMAMI — Order</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:#0f0e0c; --surface:#1a1815; --card:#242018; --border:#2e2a22;
+      --accent:#e8a838; --accent2:#c45c2a; --text:#f0ebe0; --muted:#8a8070;
+      --danger:#c0392b; --success:#27ae60; --warning:#f5c518;
+      --radius:14px; --font-head:'Playfair Display',Georgia,serif; --font-body:'DM Sans',sans-serif;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--bg);color:var(--text);font-family:var(--font-body);min-height:100vh;line-height:1.6;overflow-x:hidden}
+
+    /* ── QR / TABLE GATE SCREEN ─────────────────────────────── */
+    #gate-screen{
+      position:fixed;inset:0;z-index:400;
+      background:var(--bg);
+      background-image:radial-gradient(circle,rgba(232,168,56,0.08) 1px,transparent 1px);
+      background-size:30px 30px;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;
+    }
+    #gate-screen.leaving{animation:gateOut 0.4s ease forwards;pointer-events:none}
+    @keyframes gateOut{to{opacity:0;transform:scale(1.04)}}
+
+    .gate-logo{font-family:var(--font-head);font-size:clamp(2.8rem,10vw,5.5rem);font-weight:900;letter-spacing:0.14em;color:var(--accent);text-transform:uppercase;text-align:center;animation:fadeDown 0.5s ease both}
+    .gate-sub{color:var(--muted);font-size:0.85rem;letter-spacing:0.26em;text-transform:uppercase;margin-top:6px;margin-bottom:48px;text-align:center;animation:fadeDown 0.5s 0.08s ease both}
+    @keyframes fadeDown{from{opacity:0;transform:translateY(-16px)}to{opacity:1;transform:translateY(0)}}
+
+    /* QR scanning area */
+    .gate-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:36px 32px;max-width:420px;width:100%;text-align:center;animation:fadeDown 0.5s 0.14s ease both}
+    .gate-card-title{font-family:var(--font-head);font-size:1.5rem;color:var(--text);margin-bottom:6px}
+    .gate-card-sub{font-size:0.82rem;color:var(--muted);margin-bottom:28px;line-height:1.6}
+
+    /* QR scan video box */
+    #qr-video-wrap{position:relative;width:100%;aspect-ratio:1;background:#000;border-radius:12px;overflow:hidden;margin-bottom:18px}
+    #qr-video{width:100%;height:100%;object-fit:cover;display:block}
+    /* Corner scanner frame */
+    .qr-frame{position:absolute;inset:18px;border:2px solid var(--accent);border-radius:8px;pointer-events:none}
+    .qr-frame::before,.qr-frame::after{content:'';position:absolute;width:20px;height:20px;border-color:var(--accent);border-style:solid}
+    .qr-frame::before{top:-2px;left:-2px;border-width:3px 0 0 3px}
+    .qr-frame::after{bottom:-2px;right:-2px;border-width:0 3px 3px 0}
+    /* Scanning line animation */
+    .qr-scan-line{position:absolute;left:18px;right:18px;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:scanLine 2s ease-in-out infinite;top:18px}
+    @keyframes scanLine{0%{top:18px;opacity:1}50%{top:calc(100% - 18px);opacity:1}51%{opacity:0}52%{top:18px;opacity:0}53%{opacity:1}100%{top:18px;opacity:1}}
+
+    .qr-status{font-size:0.82rem;color:var(--muted);margin-bottom:14px;min-height:20px}
+    .qr-status.found{color:var(--success);font-weight:600}
+    .qr-status.error{color:var(--danger)}
+
+    /* Divider */
+    .gate-divider{display:flex;align-items:center;gap:10px;margin:16px 0;color:var(--muted);font-size:0.75rem}
+    .gate-divider::before,.gate-divider::after{content:'';flex:1;height:1px;background:var(--border)}
+
+    /* Manual table entry fallback */
+    .gate-manual-label{font-size:0.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;display:block;text-align:left}
+    .gate-manual-row{display:flex;gap:8px}
+    .gate-manual-input{flex:1;background:var(--card);border:2px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text);font-family:var(--font-body);font-size:0.95rem;outline:none;transition:border-color 0.2s}
+    .gate-manual-input:focus{border-color:var(--accent)}
+    .gate-manual-input.error{border-color:var(--danger)}
+    .gate-manual-input::placeholder{color:var(--muted)}
+    .btn-gate{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border:none;border-radius:8px;padding:10px 20px;font-family:var(--font-body);font-weight:700;font-size:0.9rem;cursor:pointer;transition:opacity 0.2s}
+    .btn-gate:hover{opacity:0.87}
+    .gate-error-msg{color:var(--danger);font-size:0.75rem;margin-top:6px;min-height:18px;text-align:left}
+
+    /* Takeout option */
+    .gate-takeout-link{margin-top:18px;font-size:0.8rem;color:var(--muted)}
+    .gate-takeout-link button{background:none;border:none;color:var(--accent);font-family:var(--font-body);font-size:0.8rem;cursor:pointer;text-decoration:underline}
+
+    /* ── HEADER ─────────────────────────────────────────────── */
+    header{background:var(--surface);border-bottom:1px solid var(--border);padding:16px 24px 12px;text-align:center;position:relative;overflow:hidden}
+    header::before{content:'';position:absolute;inset:0;background-image:radial-gradient(circle,var(--accent) 1px,transparent 1px);background-size:28px 28px;opacity:0.04;pointer-events:none}
+    .logo{font-family:var(--font-head);font-size:clamp(1.8rem,5vw,2.6rem);font-weight:900;letter-spacing:0.12em;color:var(--accent);text-transform:uppercase;position:relative}
+    .header-table-badge{display:inline-flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--accent);border-radius:20px;padding:3px 14px 3px 10px;font-size:0.8rem;color:var(--accent);font-weight:600;margin-top:4px;font-family:var(--font-body)}
+
+    /* ── TAB BAR ─────────────────────────────────────────────── */
+    .tab-bar{display:flex;background:var(--card);border-bottom:1px solid var(--border)}
+    .tab-btn{flex:1;padding:12px 10px;text-align:center;font-family:var(--font-body);font-size:0.88rem;font-weight:600;color:var(--muted);background:none;border:none;cursor:pointer;transition:color 0.15s;position:relative;letter-spacing:0.04em}
+    .tab-btn.active{color:var(--accent)}
+    .tab-btn.active::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--accent)}
+    .tab-count{display:inline-flex;align-items:center;justify-content:center;background:var(--accent);color:#1a1000;font-size:0.62rem;font-weight:700;width:16px;height:16px;border-radius:50%;margin-left:5px;vertical-align:middle}
+
+    /* ── DB STATUS ───────────────────────────────────────────── */
+    #db-status{display:flex;align-items:center;justify-content:center;gap:8px;font-size:0.74rem;color:var(--muted);padding:6px;background:var(--card);border-bottom:1px solid var(--border)}
+    .status-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);transition:background 0.4s}
+    .status-dot.connected{background:var(--success);box-shadow:0 0 6px var(--success)}
+    .status-dot.disconnected{background:var(--danger)}
+
+    /* ── TAB PAGES ───────────────────────────────────────────── */
+    .tab-page{display:none}
+    .tab-page.active{display:block}
+
+    /* ── BUILDER LAYOUT ─────────────────────────────────────── */
+    .app-wrapper{max-width:1160px;margin:0 auto;padding:28px 20px 20px;display:grid;grid-template-columns:1fr 340px;gap:28px;align-items:start}
+    @media(max-width:800px){.app-wrapper{grid-template-columns:1fr}}
+
+    .step{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:26px 24px;margin-bottom:20px}
+    .step-header{display:flex;align-items:center;gap:14px;margin-bottom:20px}
+    .step-number{width:34px;height:34px;border-radius:50%;background:var(--accent);color:#1a1000;font-weight:700;font-size:0.9rem;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .step-title{font-family:var(--font-head);font-size:1.25rem;color:var(--text)}
+    .step-subtitle{font-size:0.78rem;color:var(--muted);margin-left:auto;font-style:italic}
+
+    /* ── PHOTO CARDS ─────────────────────────────────────────── */
+    .options-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px}
+    .toppings-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
+    .option-card{background:var(--card);border:2px solid var(--border);border-radius:12px;cursor:pointer;overflow:hidden;transition:border-color 0.18s,transform 0.15s,box-shadow 0.18s;user-select:none;position:relative;outline:none;text-align:left}
+    .option-card:hover{border-color:var(--accent);transform:translateY(-4px);box-shadow:0 12px 28px rgba(0,0,0,0.4)}
+    .option-card.selected{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent),0 12px 28px rgba(232,168,56,0.15)}
+    .card-img-wrap{width:100%;aspect-ratio:4/3;overflow:hidden;position:relative;background:#1c1810}
+    .card-img-wrap img{width:100%;height:100%;object-fit:cover;display:block;transition:transform 0.4s}
+    .option-card:hover .card-img-wrap img{transform:scale(1.06)}
+    .card-img-placeholder{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:3rem;background:linear-gradient(135deg,#1c1810,#2a2018)}
+    .card-check{display:none;position:absolute;top:10px;right:10px;width:26px;height:26px;border-radius:50%;background:var(--accent);color:#1a1000;font-size:0.8rem;font-weight:700;align-items:center;justify-content:center;z-index:2;box-shadow:0 2px 8px rgba(0,0,0,0.4)}
+    .option-card.selected .card-check{display:flex}
+    .card-info{padding:10px 12px 12px}
+    .card-name{font-size:0.88rem;font-weight:600;color:var(--text);display:block;line-height:1.3;margin-bottom:4px}
+    .card-desc{font-size:0.72rem;color:var(--muted);display:block;line-height:1.4;margin-bottom:6px}
+    .card-price{font-size:0.82rem;font-weight:700;color:var(--accent);display:block}
+
+    /* ── ORDER SIDEBAR ───────────────────────────────────────── */
+    .order-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px 20px;position:sticky;top:24px}
+    .panel-title{font-family:var(--font-head);font-size:1.3rem;color:var(--accent);margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+    .order-item{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:0.88rem;gap:8px}
+    .order-item:last-of-type{border-bottom:none}
+    .item-label{color:var(--muted);font-size:0.7rem;text-transform:uppercase;letter-spacing:0.08em;display:block}
+    .item-name{font-weight:500;font-size:0.84rem}
+    .item-price{color:var(--accent);font-weight:600;white-space:nowrap;font-size:0.84rem}
+    .remove-btn{background:none;border:none;color:var(--danger);cursor:pointer;font-size:1rem;padding:0 4px;opacity:0.6;transition:opacity 0.15s}
+    .remove-btn:hover{opacity:1}
+    .empty-msg{text-align:center;color:var(--muted);font-size:0.85rem;padding:20px 0;font-style:italic}
+    .total-row{display:flex;justify-content:space-between;align-items:baseline;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
+    .total-label{font-family:var(--font-head);font-size:1rem;color:var(--muted)}
+    .total-amount{font-family:var(--font-head);font-size:1.7rem;color:var(--accent);font-weight:700}
+    .btn{width:100%;padding:14px 20px;border:none;border-radius:8px;font-family:var(--font-body);font-weight:600;font-size:0.95rem;cursor:pointer;transition:opacity 0.2s,transform 0.12s;margin-top:12px;letter-spacing:0.04em}
+    .btn:hover:not(:disabled){opacity:0.87;transform:translateY(-1px)}
+    .btn:active:not(:disabled){transform:translateY(0)}
+    .btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff}
+    .btn-ghost{background:transparent;border:1px solid var(--border);color:var(--muted)}
+    .btn:disabled{opacity:0.35;cursor:not-allowed}
+    .hint{font-size:0.75rem;color:var(--danger);text-align:center;margin-top:8px;min-height:18px}
+    .btn-spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;margin-right:8px;vertical-align:middle}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    /* ── MY ORDERS TAB ───────────────────────────────────────── */
+    .my-orders-page{max-width:760px;margin:0 auto;padding:28px 20px 60px}
+    .my-orders-heading{font-family:var(--font-head);font-size:1.6rem;color:var(--text);margin-bottom:6px}
+    .my-orders-sub{font-size:0.82rem;color:var(--muted);margin-bottom:22px}
+
+    .live-order-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;margin-bottom:16px;position:relative;animation:slideIn 0.3s ease}
+    @keyframes slideIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+    .live-order-card::before{content:'';position:absolute;left:0;top:14px;bottom:14px;width:3px;border-radius:0 3px 3px 0}
+    .live-order-card.status-pending::before{background:var(--warning)}
+    .live-order-card.status-cooking::before{background:#e8602c}
+    .live-order-card.status-ready::before{background:var(--success)}
+    .live-order-card.status-served::before{background:var(--muted)}
+    .live-order-card.status-cancelled::before{background:var(--danger)}
+
+    .live-card-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;gap:8px;flex-wrap:wrap}
+    .live-order-id{font-size:0.8rem;font-weight:700;color:var(--accent);letter-spacing:0.1em;text-transform:uppercase}
+    .live-order-time{font-size:0.72rem;color:var(--muted)}
+    .live-status-pill{font-size:0.72rem;font-weight:700;padding:3px 10px;border-radius:20px;text-transform:uppercase;letter-spacing:0.08em}
+    .pill-pending{background:rgba(245,197,24,0.15);color:var(--warning)}
+    .pill-cooking{background:rgba(232,96,44,0.15);color:#e8602c}
+    .pill-ready{background:rgba(39,174,96,0.15);color:var(--success)}
+    .pill-served{background:rgba(138,128,112,0.15);color:var(--muted)}
+    .pill-cancelled{background:rgba(192,57,43,0.15);color:var(--danger)}
+    .live-status-msg{font-size:0.88rem;font-weight:600;margin-top:4px;margin-bottom:10px}
+    .msg-pending{color:var(--warning)} .msg-cooking{color:#e8602c} .msg-ready{color:var(--success)} .msg-served{color:var(--muted)} .msg-cancelled{color:var(--danger)}
+
+    .live-items{margin:8px 0}
+    .live-item-row{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--border);font-size:0.84rem}
+    .live-item-row:last-child{border-bottom:none}
+    .live-item-label{font-size:0.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;min-width:52px}
+    .live-item-name{flex:1}
+    .live-item-price{color:var(--accent);font-weight:600;white-space:nowrap;font-size:0.82rem}
+    .live-card-footer{display:flex;align-items:center;justify-content:space-between;margin-top:12px;gap:10px;flex-wrap:wrap}
+    .live-order-total{font-weight:700;color:var(--text);font-size:0.9rem}
+    .live-order-total span{color:var(--accent)}
+    .btn-cancel-order{background:transparent;border:1px solid var(--danger);color:var(--danger);border-radius:6px;padding:6px 14px;font-family:var(--font-body);font-size:0.78rem;font-weight:600;cursor:pointer;transition:background 0.15s,color 0.15s}
+    .btn-cancel-order:hover{background:var(--danger);color:#fff}
+
+    .my-orders-total{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;display:flex;justify-content:space-between;align-items:baseline;margin-top:8px}
+    .my-orders-total-label{font-family:var(--font-head);font-size:1rem;color:var(--muted)}
+    .my-orders-total-amt{font-family:var(--font-head);font-size:2rem;color:var(--accent)}
+    .no-live-orders{text-align:center;padding:60px 20px;color:var(--muted)}
+    .no-live-orders .big{font-size:3rem;display:block;margin-bottom:12px}
+
+    /* ── CONFIRMATION MODAL ──────────────────────────────────── */
+    .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.78);z-index:200;align-items:center;justify-content:center;padding:20px}
+    .modal-overlay.active{display:flex}
+    .modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:36px 30px;max-width:520px;width:100%;text-align:center;animation:popIn 0.22s ease;max-height:90vh;overflow-y:auto}
+    @keyframes popIn{from{transform:scale(0.92);opacity:0}to{transform:scale(1);opacity:1}}
+    .modal-icon{font-size:3rem;margin-bottom:12px}
+    .modal-title{font-family:var(--font-head);font-size:1.8rem;color:var(--accent);margin-bottom:6px}
+    .modal-sub{color:var(--muted);font-size:0.85rem;margin-bottom:20px}
+    .modal-order-id{font-size:0.8rem;color:var(--muted);letter-spacing:0.12em;margin-bottom:6px;text-transform:uppercase}
+    .modal-summary{background:var(--card);border-radius:8px;padding:16px;text-align:left;font-size:0.88rem;margin-bottom:22px}
+    .modal-line{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)}
+    .modal-line:last-child{border-bottom:none}
+    .modal-line-text{flex:1}
+    .modal-line-name{font-weight:500}
+    .modal-line-label{font-size:0.7rem;color:var(--muted)}
+    .modal-line-price{color:var(--accent);font-weight:600;white-space:nowrap}
+    .modal-total{display:flex;justify-content:space-between;font-weight:700;font-size:1.05rem;padding-top:10px;margin-top:6px;border-top:1px solid var(--border)}
+    .modal-total span:last-child{color:var(--accent)}
+
+    /* Bowl preview */
+    .bowl-preview{margin:0 0 20px;text-align:center}
+    .bowl-preview-label{font-size:0.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.14em;margin-bottom:10px}
+    .bowl-stack{position:relative;margin:0 auto;width:220px}
+    .bowl-layer{position:absolute;left:0;right:0;height:130px;border-radius:16px;overflow:hidden;box-shadow:0 4px 18px rgba(0,0,0,0.55);border:2px solid rgba(255,255,255,0.07);animation:layerIn 0.35s ease both}
+    @keyframes layerIn{from{opacity:0;transform:translateY(-10px) scale(0.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+    .bowl-layer img{width:100%;height:100%;object-fit:cover;display:block}
+    .bowl-layer-emoji{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:3rem;background:linear-gradient(135deg,#1c1810,#2e2418)}
+    .bowl-layer-tag{position:absolute;bottom:0;left:0;right:0;padding:6px 10px;background:linear-gradient(to top,rgba(0,0,0,0.82),transparent);font-size:0.72rem;font-weight:600;color:#fff;text-align:left}
+    .bowl-layer-tag .layer-cat{font-size:0.6rem;color:var(--accent);text-transform:uppercase;letter-spacing:0.1em;display:block;line-height:1;margin-bottom:1px}
+    .bowl-toppings-row{display:flex;justify-content:center;margin-top:10px;position:relative;z-index:20;flex-wrap:wrap;gap:8px}
+    .topping-chip-wrap{display:flex;flex-direction:column;align-items:center}
+    .topping-chip{width:52px;height:52px;border-radius:50%;overflow:hidden;border:2px solid var(--bg);box-shadow:0 2px 8px rgba(0,0,0,0.4);animation:chipIn 0.3s ease both;flex-shrink:0}
+    @keyframes chipIn{from{opacity:0;transform:scale(0.6)}to{opacity:1;transform:scale(1)}}
+    .topping-chip img{width:100%;height:100%;object-fit:cover}
+    .topping-chip-emoji{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:1.4rem;background:linear-gradient(135deg,#1c1810,#2e2418)}
+    .topping-chip-label{font-size:0.62rem;color:var(--muted);text-align:center;margin-top:3px;max-width:56px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  </style>
+</head>
+<body>
+
+<!-- ============================================================
+     GATE SCREEN — shown until table is identified via QR or manual
+============================================================ -->
+<div id="gate-screen">
+  <div class="gate-logo">UMAMI</div>
+  <p class="gate-sub">Custom Bowl Builder</p>
+
+  <div class="gate-card">
+    <h2 class="gate-card-title">📷 Scan Your Table QR</h2>
+    <p class="gate-card-sub">Point your camera at the QR code on your table to get started. Or enter your table number manually below.</p>
+
+    <!-- QR scanner video feed -->
+    <div id="qr-video-wrap">
+      <video id="qr-video" autoplay muted playsinline></video>
+      <div class="qr-frame"></div>
+      <div class="qr-scan-line"></div>
+    </div>
+    <p class="qr-status" id="qr-status">📷 Starting camera…</p>
+
+    <div class="gate-divider">or enter manually</div>
+
+    <span class="gate-manual-label">Table Number</span>
+    <div class="gate-manual-row">
+      <input class="gate-manual-input" id="manual-table-input" type="text" placeholder="e.g. Table 3" maxlength="20" />
+      <button class="btn-gate" onclick="manualEnterTable()">Go →</button>
+    </div>
+    <p class="gate-error-msg" id="gate-error"></p>
+
+    <div class="gate-takeout-link">
+      Not dining in? <button onclick="chooseTakeout()">Order as Take Out instead →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     MAIN APP
+============================================================ -->
+<header>
+  <div class="logo">UMAMI</div>
+  <div class="header-table-badge" id="header-table-badge">🪑 —</div>
+  <p style="color:var(--muted);font-size:0.78rem;letter-spacing:0.2em;text-transform:uppercase;margin-top:2px;">Custom Bowl Builder · Fresh to Order</p>
+</header>
+
+<div class="tab-bar">
+  <button class="tab-btn active" id="tab-build" onclick="switchTab('build')">🍜 Build Your Bowl</button>
+  <button class="tab-btn" id="tab-myorders" onclick="switchTab('myorders')">
+    📋 My Orders
+    <span class="tab-count" id="tab-count" style="display:none;">0</span>
+  </button>
+</div>
+
+<div id="db-status">
+  <div class="status-dot" id="status-dot"></div>
+  <span id="status-text">Connecting to kitchen…</span>
+</div>
+
+<!-- TAB 1: BUILD -->
+<div class="tab-page active" id="page-build">
+  <div class="app-wrapper">
+    <div class="builder">
+
+      <!-- Takeout notice (shown for takeout orders) -->
+      <div class="step" id="takeout-notice" style="display:none;background:rgba(232,96,44,0.08);border-color:rgba(232,96,44,0.25);padding:16px 24px;">
+        <span style="font-size:1.4rem;">🥡</span> <strong>Take Out Order</strong>
+        <span style="color:var(--muted);font-size:0.82rem;display:block;margin-top:4px;">Your order will be packed and ready at the counter.</span>
+      </div>
+
+      <section class="step">
+        <div class="step-header"><div class="step-number">1</div><h2 class="step-title">Choose Your Base</h2><span class="step-subtitle">Required</span></div>
+        <div class="options-grid" id="grid-base"></div>
+      </section>
+      <section class="step">
+        <div class="step-header"><div class="step-number">2</div><h2 class="step-title">Pick a Protein</h2><span class="step-subtitle">Required</span></div>
+        <div class="options-grid" id="grid-protein"></div>
+      </section>
+      <section class="step">
+        <div class="step-header"><div class="step-number">3</div><h2 class="step-title">Select a Sauce</h2><span class="step-subtitle">Required</span></div>
+        <div class="options-grid" id="grid-sauce"></div>
+      </section>
+      <section class="step">
+        <div class="step-header"><div class="step-number">4</div><h2 class="step-title">Add Toppings</h2><span class="step-subtitle">Optional · Pick any</span></div>
+        <div class="options-grid toppings-grid" id="grid-toppings"></div>
+      </section>
+    </div>
+
+    <aside class="order-panel">
+      <h2 class="panel-title">🧾 Your Order</h2>
+      <div id="panel-type-pill" style="display:inline-flex;align-items:center;gap:5px;font-size:0.72rem;font-weight:600;padding:3px 10px;border-radius:20px;margin-bottom:14px;background:rgba(39,174,96,0.12);color:#27ae60;">🪑 Eat Here</div>
+      <div id="order-lines"><p class="empty-msg">Nothing added yet.<br/>Start building your bowl!</p></div>
+      <div class="total-row">
+        <span class="total-label">Total</span>
+        <span class="total-amount" id="total-display">¥0</span>
+      </div>
+      <p class="hint" id="hint-msg"></p>
+      <button class="btn btn-primary" id="btn-place" onclick="placeOrder()">Confirm Order →</button>
+      <button class="btn btn-ghost" onclick="resetOrder()">↺ Clear Selection</button>
+    </aside>
+  </div>
+</div>
+
+<!-- TAB 2: MY ORDERS -->
+<div class="tab-page" id="page-myorders">
+  <div class="my-orders-page">
+    <h2 class="my-orders-heading">📋 My Orders</h2>
+    <p class="my-orders-sub" id="my-orders-sub">Orders for your table this session</p>
+    <div id="live-orders-list">
+      <div class="no-live-orders">
+        <span class="big">🍜</span>
+        <p>No orders yet.<br/>Build your bowl and confirm to get started!</p>
+      </div>
+    </div>
+    <div id="my-orders-total-row" style="display:none;" class="my-orders-total">
+      <span class="my-orders-total-label">Session Total</span>
+      <span class="my-orders-total-amt" id="my-orders-total-amt">¥0</span>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIRMATION MODAL -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-icon" id="modal-icon">🎉</div>
+    <h2 class="modal-title">Order Confirmed!</h2>
+    <p class="modal-order-id" id="modal-order-id"></p>
+    <p class="modal-sub" id="modal-sub"></p>
+    <div class="bowl-preview" id="bowl-preview"></div>
+    <div class="modal-summary" id="modal-summary"></div>
+    <button class="btn btn-primary" onclick="closeModal()">Add Another Order</button>
+  </div>
+</div>
+
+<!-- jsQR library for QR code scanning -->
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
+<script>
+  /* ── FIREBASE ─────────────────────────────────────────── */
+  const firebaseConfig = {
+    apiKey:"AIzaSyD2yOZznSm0jpmq4EaPA95JnfvcZWN2Ec0",
+    authDomain:"create-b4da9.firebaseapp.com",
+    databaseURL:"https://create-b4da9-default-rtdb.firebaseio.com",
+    projectId:"create-b4da9",
+    storageBucket:"create-b4da9.firebasestorage.app",
+    messagingSenderId:"301948845653",
+    appId:"1:301948845653:web:c5ed5b440727bf1ecbdedc"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+  db.ref('.info/connected').on('value', snap => {
+    const ok = snap.val();
+    document.getElementById('status-dot').className   = 'status-dot '+(ok?'connected':'disconnected');
+    document.getElementById('status-text').textContent = ok?'Connected to kitchen ✓':'Offline — will sync when reconnected';
+  });
+
+  /* ── MENU DATA ────────────────────────────────────────── */
+  const MENU = {
+    base:[
+      {id:'rice',    name:'Steamed Rice',  desc:'Fluffy Japanese short-grain', emoji:'🍚',image:'images/rice.jpg',    price:200},
+      {id:'noodles', name:'Ramen Noodles', desc:'Springy wheat noodles',       emoji:'🍜',image:'images/noodles.jpg', price:250},
+    ],
+    protein:[
+      {id:'chicken', name:'Grilled Chicken', desc:'Tender & lightly seasoned',   emoji:'🍗',image:'images/chicken.jpg', price:350},
+      {id:'pork',    name:'Chashu Pork',     desc:'Slow-braised, melt-in-mouth', emoji:'🥩',image:'images/pork.jpg',    price:400},
+      {id:'beef',    name:'Wagyu Beef',      desc:'Premium marbled slices',      emoji:'🥓',image:'images/beef.jpg',    price:500},
+    ],
+    sauce:[
+      {id:'spicy', name:'Spicy Miso', desc:'Bold, rich & fiery',    emoji:'🌶️',image:'images/spicy.jpg',    price:100},
+      {id:'sweet', name:'Teriyaki',   desc:'Sweet, glazed & smoky', emoji:'🍯',image:'images/teriyaki.jpg', price:100},
+      {id:'curry', name:'Curry',      desc:'Warm & aromatic',       emoji:'🍛',image:'images/curry.jpg',    price:120},
+    ],
+    toppings:[
+      {id:'egg',        name:'Soft Egg', desc:'Jammy ramen egg',    emoji:'🥚',image:'images/egg.jpg',        price:80},
+      {id:'cheese',     name:'Cheese',   desc:'Melted on top',      emoji:'🧀',image:'images/cheese.jpg',     price:90},
+      {id:'vegetables', name:'Veggies',  desc:'Fresh seasonal mix', emoji:'🥦',image:'images/vegetables.jpg', price:70},
+    ],
+  };
+
+  /* ── STATE ───────────────────────────────────────────── */
+  const order  = {base:null, protein:null, sauce:null, toppings:[]};
+  let tableId   = null;   // e.g. "Table 3" — set from QR or manual entry
+  let orderType = 'eat-in';
+  const myOrders = {};    // fbKey → order object (only this table's orders)
+  let qrInterval = null;
+
+  /* ── HELPERS ─────────────────────────────────────────── */
+  const formatPrice = n => '¥'+n.toLocaleString();
+  function calcTotal(){
+    let t=0;
+    if(order.base)    t+=order.base.price;
+    if(order.protein) t+=order.protein.price;
+    if(order.sauce)   t+=order.sauce.price;
+    order.toppings.forEach(x=>t+=x.price);
+    return t;
+  }
+  function genOrderId(){ return Math.floor(100000+Math.random()*900000).toString(); }
+  function nowTime(){
+    const d=new Date();
+    return d.getHours().toString().padStart(2,'0')+':'+d.getMinutes().toString().padStart(2,'0');
+  }
+  function thumbHTML(item,size=36){
+    if(item.image)
+      return `<img src="${item.image}" alt="${item.name}" style="width:${size}px;height:${size}px;border-radius:6px;object-fit:cover;flex-shrink:0;" onerror="this.outerHTML='<span style=\\'font-size:${Math.round(size*0.55)}px;width:${size}px;height:${size}px;display:inline-flex;align-items:center;justify-content:center;\\'>${item.emoji}</span>'" />`;
+    return `<span style="font-size:${Math.round(size*0.55)}px;width:${size}px;height:${size}px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">${item.emoji}</span>`;
+  }
+
+  /* ── QR CODE SCANNER ─────────────────────────────────── */
+  async function startQRScanner(){
+    const video  = document.getElementById('qr-video');
+    const status = document.getElementById('qr-status');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+      video.srcObject = stream;
+      await video.play();
+      status.textContent = '📷 Scanning… point at the table QR code';
+
+      const canvas = document.createElement('canvas');
+      const ctx    = canvas.getContext('2d');
+
+      qrInterval = setInterval(() => {
+        if(video.readyState !== video.HAVE_ENOUGH_DATA) return;
+        canvas.width  = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height);
+        if(code){
+          // QR code data format: "UMAMI-TABLE:Table 1"
+          const raw = code.data.trim();
+          if(raw.startsWith('UMAMI-TABLE:')){
+            const tbl = raw.replace('UMAMI-TABLE:','').trim();
+            clearInterval(qrInterval);
+            stream.getTracks().forEach(t=>t.stop());
+            status.className='qr-status found';
+            status.textContent='✅ Table identified: '+tbl;
+            setTimeout(()=>enterTable(tbl,'eat-in'), 700);
+          } else {
+            status.className='qr-status error';
+            status.textContent='⚠ Invalid QR code. Please scan the table QR.';
+          }
+        }
+      }, 200);
+    } catch(e){
+      status.className='qr-status error';
+      status.textContent='📷 Camera not available — please enter your table number manually below.';
+    }
+  }
+
+  /* ── MANUAL TABLE ENTRY ──────────────────────────────── */
+  document.getElementById('manual-table-input').addEventListener('keydown', e=>{
+    if(e.key==='Enter') manualEnterTable();
+  });
+  function manualEnterTable(){
+    const val = document.getElementById('manual-table-input').value.trim();
+    const inp = document.getElementById('manual-table-input');
+    const err = document.getElementById('gate-error');
+    if(!val){ inp.classList.add('error'); err.textContent='⚠ Please enter your table number.'; return; }
+    inp.classList.remove('error'); err.textContent='';
+    if(qrInterval){ clearInterval(qrInterval); }
+    const video = document.getElementById('qr-video');
+    if(video.srcObject) video.srcObject.getTracks().forEach(t=>t.stop());
+    enterTable(val, 'eat-in');
+  }
+
+  /* ── TAKEOUT SHORTCUT ────────────────────────────────── */
+  function chooseTakeout(){
+    if(qrInterval) clearInterval(qrInterval);
+    const video = document.getElementById('qr-video');
+    if(video.srcObject) video.srcObject.getTracks().forEach(t=>t.stop());
+    enterTable('Take Out','takeout');
+  }
+
+  /* ── ENTER TABLE — dismisses gate, sets up the app ──── */
+  function enterTable(tbl, type){
+    tableId   = tbl;
+    orderType = type;
+
+    // Mark table occupied in Firebase
+    if(type === 'eat-in'){
+      db.ref('tables/'+sanitizeKey(tbl)).update({
+        status:'occupied', table:tbl, since: Date.now()
+      });
+    }
+
+    // Update header badge
+    document.getElementById('header-table-badge').textContent = (type==='eat-in'?'🪑 ':'🥡 ')+tbl;
+
+    // Update sidebar pill
+    const pill = document.getElementById('panel-type-pill');
+    pill.style.background = type==='eat-in'?'rgba(39,174,96,0.12)':'rgba(232,96,44,0.12)';
+    pill.style.color      = type==='eat-in'?'#27ae60':'#e8602c';
+    pill.textContent      = type==='eat-in'?'🪑 Eat Here':'🥡 Take Out';
+
+    // Show/hide takeout notice
+    document.getElementById('takeout-notice').style.display = type==='takeout'?'block':'none';
+
+    // Update My Orders subtitle
+    document.getElementById('my-orders-sub').textContent =
+      type==='eat-in' ? 'Orders for '+tbl+' this session' : 'Your take-out orders';
+
+    // Dismiss gate
+    const gate = document.getElementById('gate-screen');
+    gate.classList.add('leaving');
+    gate.addEventListener('animationend',()=>{ gate.style.display='none'; },{once:true});
+  }
+
+  function sanitizeKey(str){ return str.replace(/[.#$\[\]/\s]/g,'-'); }
+
+  /* ── TAB SWITCHING ───────────────────────────────────── */
+  function switchTab(tab){
+    document.getElementById('page-build').classList.toggle('active', tab==='build');
+    document.getElementById('page-myorders').classList.toggle('active', tab==='myorders');
+    document.getElementById('tab-build').classList.toggle('active', tab==='build');
+    document.getElementById('tab-myorders').classList.toggle('active', tab==='myorders');
+  }
+  function updateTabBadge(){
+    const active = Object.values(myOrders).filter(o=>o.status!=='cancelled'&&o.status!=='served').length;
+    const badge  = document.getElementById('tab-count');
+    badge.style.display = active>0?'inline-flex':'none';
+    badge.textContent   = active;
+  }
+
+  /* ── RENDER PHOTO CARDS ──────────────────────────────── */
+  function renderGrid(category, gridId, multiSelect){
+    const grid=document.getElementById(gridId); grid.innerHTML='';
+    MENU[category].forEach(item=>{
+      const card=document.createElement('button');
+      card.className='option-card'; card.id='card-'+item.id;
+      const photoHTML=item.image
+        ?`<img src="${item.image}" alt="${item.name}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"/><div class="card-img-placeholder" style="display:none;">${item.emoji}</div>`
+        :`<div class="card-img-placeholder">${item.emoji}</div>`;
+      card.innerHTML=`<div class="card-check">✓</div><div class="card-img-wrap">${photoHTML}</div><div class="card-info"><span class="card-name">${item.name}</span>${item.desc?`<span class="card-desc">${item.desc}</span>`:''}<span class="card-price">${formatPrice(item.price)}</span></div>`;
+      card.addEventListener('click',()=>multiSelect?toggleTopping(item,card):selectSingle(category,item));
+      grid.appendChild(card);
+    });
+  }
+
+  /* ── SELECTION ───────────────────────────────────────── */
+  function selectSingle(category,item){
+    order[category]=item;
+    MENU[category].forEach(i=>document.getElementById('card-'+i.id)?.classList.remove('selected'));
+    document.getElementById('card-'+item.id)?.classList.add('selected');
+    updateOrderPanel();
+  }
+  function toggleTopping(item,card){
+    const idx=order.toppings.findIndex(t=>t.id===item.id);
+    if(idx===-1){order.toppings.push(item);card.classList.add('selected');}
+    else{order.toppings.splice(idx,1);card.classList.remove('selected');}
+    updateOrderPanel();
+  }
+  function removeTopping(id){
+    order.toppings=order.toppings.filter(t=>t.id!==id);
+    document.getElementById('card-'+id)?.classList.remove('selected');
+    updateOrderPanel();
+  }
+
+  /* ── UPDATE SIDEBAR ──────────────────────────────────── */
+  function updateOrderPanel(){
+    const container=document.getElementById('order-lines');
+    container.innerHTML=''; let hasItems=false;
+    function addLine(label,item,removable){
+      hasItems=true;
+      const div=document.createElement('div'); div.className='order-item';
+      div.innerHTML=`${thumbHTML(item,36)}<div style="flex:1;min-width:0;"><span class="item-label">${label}</span><span class="item-name">${item.name}</span></div><span class="item-price">${formatPrice(item.price)}</span>${removable?`<button class="remove-btn" onclick="removeTopping('${item.id}')" title="Remove">×</button>`:''}`;
+      container.appendChild(div);
+    }
+    if(order.base)    addLine('Base',   order.base,   false);
+    if(order.protein) addLine('Protein',order.protein,false);
+    if(order.sauce)   addLine('Sauce',  order.sauce,  false);
+    order.toppings.forEach(t=>addLine('Topping',t,true));
+    if(!hasItems) container.innerHTML='<p class="empty-msg">Nothing added yet.<br/>Start building your bowl!</p>';
+    document.getElementById('total-display').textContent=formatPrice(calcTotal());
+    document.getElementById('hint-msg').textContent='';
+  }
+
+  /* ── PLACE ORDER ─────────────────────────────────────── */
+  async function placeOrder(){
+    if(!order.base||!order.protein){
+      document.getElementById('hint-msg').textContent='⚠ Please select a Base and Protein to continue.';
+      return;
+    }
+    const items=[];
+    if(order.base)    items.push({label:'Base',   ...order.base});
+    if(order.protein) items.push({label:'Protein',...order.protein});
+    if(order.sauce)   items.push({label:'Sauce',  ...order.sauce});
+    order.toppings.forEach(t=>items.push({label:'Topping',...t}));
+
+    const total=calcTotal(), orderId=genOrderId(), time=nowTime();
+    const rec={
+      orderId, table:tableId, orderType,
+      items, total, time,
+      timestamp:Date.now(), status:'pending',
+    };
+
+    const btn=document.getElementById('btn-place');
+    btn.disabled=true; btn.innerHTML='<span class="btn-spinner"></span> Sending…';
+
+    try{
+      const ref=await db.ref('orders').push(rec);
+      const fbKey=ref.key;
+      myOrders[fbKey]={...rec,firebaseKey:fbKey};
+
+      // Live listener — only this order, only this table sees it
+      db.ref('orders/'+fbKey).on('value', snap=>{
+        const data=snap.val();
+        if(data){ myOrders[fbKey]={...data,firebaseKey:fbKey}; renderMyOrders(); updateTabBadge(); }
+      });
+
+      buildBowlPreview(items);
+      let html='';
+      items.forEach(l=>{
+        html+=`<div class="modal-line">${thumbHTML(l,38)}<div class="modal-line-text"><div class="modal-line-name">${l.name}</div><div class="modal-line-label">${l.label}</div></div><span class="modal-line-price">${formatPrice(l.price)}</span></div>`;
+      });
+      html+=`<div class="modal-total"><span>Total</span><span>${formatPrice(total)}</span></div>`;
+
+      document.getElementById('modal-icon').textContent    = orderType==='eat-in'?'🎉':'🥡';
+      document.getElementById('modal-order-id').textContent= 'ORDER #'+orderId+' · '+tableId;
+      document.getElementById('modal-sub').textContent     = orderType==='eat-in'
+        ?'✅ Confirmed! Your order is now with the kitchen. 👨‍🍳'
+        :'✅ Confirmed! Your take-out is being prepared. 🔔';
+      document.getElementById('modal-summary').innerHTML=html;
+      document.getElementById('modal').classList.add('active');
+      updateTabBadge();
+    } catch(e){
+      console.error(e);
+      document.getElementById('hint-msg').textContent='⚠ Could not send order. Check your connection.';
+    }
+    btn.disabled=false; btn.innerHTML='Confirm Order →';
+  }
+
+  /* ── MODAL CLOSE ─────────────────────────────────────── */
+  function closeModal(){
+    document.getElementById('modal').classList.remove('active');
+    order.base=null; order.protein=null; order.sauce=null; order.toppings=[];
+    document.querySelectorAll('.option-card').forEach(c=>c.classList.remove('selected'));
+    updateOrderPanel();
+  }
+  document.getElementById('modal').addEventListener('click',function(e){if(e.target===this)closeModal();});
+
+  function resetOrder(){
+    order.base=null;order.protein=null;order.sauce=null;order.toppings=[];
+    document.querySelectorAll('.option-card').forEach(c=>c.classList.remove('selected'));
+    updateOrderPanel();
+  }
+
+  /* ── CANCEL ORDER ────────────────────────────────────── */
+  async function cancelOrder(fbKey){
+    const o=myOrders[fbKey];
+    if(!o) return;
+    if(o.status!=='pending'){ alert('Sorry — this order is already being cooked and cannot be cancelled.'); return; }
+    if(!confirm('Cancel order #'+o.orderId+'? This cannot be undone.')) return;
+    try{ await db.ref('orders/'+fbKey).update({status:'cancelled'}); }
+    catch(e){ alert('Could not cancel order. Please ask a staff member.'); }
+  }
+
+  /* ── RENDER MY ORDERS ────────────────────────────────── */
+  function renderMyOrders(){
+    const list=document.getElementById('live-orders-list');
+    const totalEl=document.getElementById('my-orders-total-amt');
+    const totalRow=document.getElementById('my-orders-total-row');
+    const orders=Object.values(myOrders).sort((a,b)=>a.timestamp-b.timestamp);
+    if(orders.length===0){
+      list.innerHTML='<div class="no-live-orders"><span class="big">🍜</span><p>No orders yet.<br/>Build your bowl and confirm to get started!</p></div>';
+      totalRow.style.display='none'; return;
+    }
+    const statusMsg={
+      pending:{text:'⏳ Order received — waiting for the kitchen…',cls:'msg-pending'},
+      cooking:{text:'🔥 Your food is being cooked right now!',cls:'msg-cooking'},
+      ready:  {text:'✅ Your food is ready! Please collect / wait.',cls:'msg-ready'},
+      served: {text:'🍽 Served — enjoy your meal!',cls:'msg-served'},
+      cancelled:{text:'❌ This order was cancelled.',cls:'msg-cancelled'},
+    };
+    list.innerHTML=''; let sessionTotal=0;
+    orders.forEach(o=>{
+      if(o.status!=='cancelled') sessionTotal+=o.total||0;
+      const msg=statusMsg[o.status]||statusMsg.pending;
+      const canCancel=o.status==='pending';
+      const card=document.createElement('div');
+      card.className=`live-order-card status-${o.status}`;
+      let itemRows='';
+      (o.items||[]).forEach(item=>{
+        itemRows+=`<div class="live-item-row">${thumbHTML(item,30)}<span class="live-item-label">${item.label}</span><span class="live-item-name">${item.name}</span><span class="live-item-price">${formatPrice(item.price)}</span></div>`;
+      });
+      card.innerHTML=`
+        <div class="live-card-header">
+          <div><div class="live-order-id">#${o.orderId}</div><div class="live-order-time">🕐 ${o.time||''}</div></div>
+          <span class="live-status-pill pill-${o.status}">${o.status}</span>
+        </div>
+        <div class="live-status-msg ${msg.cls}">${msg.text}</div>
+        <div class="live-items">${itemRows}</div>
+        <div class="live-card-footer">
+          <div class="live-order-total">Total: <span>${formatPrice(o.total)}</span></div>
+          ${canCancel?`<button class="btn-cancel-order" onclick="cancelOrder('${o.firebaseKey}')">✕ Cancel</button>`:''}
+        </div>`;
+      list.appendChild(card);
+    });
+    const valid=orders.filter(o=>o.status!=='cancelled');
+    totalRow.style.display=valid.length>0?'flex':'none';
+    totalEl.textContent=formatPrice(sessionTotal);
+  }
+
+  /* ── BOWL PREVIEW ────────────────────────────────────── */
+  function buildBowlPreview(items){
+    const container=document.getElementById('bowl-preview');
+    const layers=items.filter(i=>i.label!=='Topping');
+    const toppings=items.filter(i=>i.label==='Topping');
+    const LAYER_H=130, OFFSET=48, stackH=LAYER_H+(layers.length-1)*OFFSET;
+    let stackHTML='';
+    layers.forEach((item,idx)=>{
+      const top=idx*OFFSET, delay=idx*0.08;
+      const inner=item.image
+        ?`<img src="${item.image}" alt="${item.name}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><div class="bowl-layer-emoji" style="display:none;">${item.emoji}</div>`
+        :`<div class="bowl-layer-emoji">${item.emoji}</div>`;
+      stackHTML+=`<div class="bowl-layer" style="top:${top}px;z-index:${idx+1};animation-delay:${delay}s;">${inner}<div class="bowl-layer-tag"><span class="layer-cat">${item.label}</span>${item.name}</div></div>`;
+    });
+    let toppingHTML='';
+    toppings.forEach((t,idx)=>{
+      const delay=(layers.length*0.08)+idx*0.07;
+      const inner=t.image
+        ?`<img src="${t.image}" alt="${t.name}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"><div class="topping-chip-emoji" style="display:none;">${t.emoji}</div>`
+        :`<div class="topping-chip-emoji">${t.emoji}</div>`;
+      toppingHTML+=`<div class="topping-chip-wrap"><div class="topping-chip" style="animation-delay:${delay}s;">${inner}</div><span class="topping-chip-label">${t.name}</span></div>`;
+    });
+    container.innerHTML=`<p class="bowl-preview-label">Your Bowl</p><div class="bowl-stack" style="height:${stackH}px;">${stackHTML}</div>${toppings.length?`<div class="bowl-toppings-row" style="margin-top:${stackH-LAYER_H+18}px;">${toppingHTML}</div>`:''}`;
+  }
+
+  /* ── INIT ────────────────────────────────────────────── */
+  renderGrid('base',    'grid-base',    false);
+  renderGrid('protein', 'grid-protein', false);
+  renderGrid('sauce',   'grid-sauce',   false);
+  renderGrid('toppings','grid-toppings',true);
+  startQRScanner();
+</script>
+</body>
+</html>

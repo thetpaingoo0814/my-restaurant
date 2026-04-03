@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>UMAMI — Table Manager</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <style>
+    :root{
+      --bg:#0a0a0a;--surface:#111;--card:#161616;--border:#222;
+      --accent:#f5c518;--text:#f0f0f0;--muted:#666;
+      --available:#27c06a;--occupied:#e8602c;--dirty:#f5c518;--closed:#444;
+      --radius:12px;--font-head:'Bebas Neue',Impact,sans-serif;--font-body:'DM Sans',sans-serif;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--bg);color:var(--text);font-family:var(--font-body);min-height:100vh}
+
+    /* ── TOP BAR ── */
+    .top-bar{background:var(--surface);border-bottom:2px solid var(--accent);padding:0 28px;display:flex;align-items:center;justify-content:space-between;height:64px;gap:16px}
+    .page-logo{font-family:var(--font-head);font-size:1.9rem;letter-spacing:0.08em;color:var(--accent)}
+    .page-logo span{color:var(--muted);font-size:0.95rem;letter-spacing:0.18em;margin-left:10px}
+    .top-status{display:flex;align-items:center;gap:8px;font-size:0.78rem;color:var(--muted)}
+    .status-dot{width:9px;height:9px;border-radius:50%;background:var(--muted);transition:background 0.4s}
+    .status-dot.connected{background:var(--available);box-shadow:0 0 8px var(--available)}
+    .status-dot.disconnected{background:#c0392b}
+
+    /* ── LAYOUT ── */
+    .page-body{max-width:1100px;margin:0 auto;padding:32px 20px 60px;display:grid;grid-template-columns:1fr 360px;gap:28px;align-items:start}
+    @media(max-width:780px){.page-body{grid-template-columns:1fr}}
+
+    /* ── SECTION TITLE ── */
+    .section-title{font-family:var(--font-head);font-size:1.5rem;letter-spacing:0.06em;color:var(--text);margin-bottom:16px}
+    .section-sub{font-size:0.82rem;color:var(--muted);margin-bottom:20px}
+
+    /* ── TABLE MAP ── */
+    .table-map-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px}
+    .legend{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:20px}
+    .legend-item{display:flex;align-items:center;gap:6px;font-size:0.75rem;color:var(--muted)}
+    .legend-dot{width:12px;height:12px;border-radius:3px;flex-shrink:0}
+
+    /* Table grid */
+    .tables-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px}
+
+    /* Individual table tile */
+    .table-tile{background:var(--card);border:2px solid var(--border);border-radius:var(--radius);padding:18px 14px;text-align:center;cursor:pointer;transition:border-color 0.18s,transform 0.15s,box-shadow 0.18s;position:relative;user-select:none}
+    .table-tile:hover{transform:translateY(-3px);box-shadow:0 10px 24px rgba(0,0,0,0.4)}
+    .table-tile.available{border-color:var(--available)}
+    .table-tile.occupied {border-color:var(--occupied)}
+    .table-tile.dirty    {border-color:var(--dirty)}
+    .table-tile.closed   {border-color:var(--closed);opacity:0.5}
+
+    .table-tile-icon{font-size:2rem;display:block;margin-bottom:8px}
+    .table-tile-name{font-family:var(--font-head);font-size:1.1rem;letter-spacing:0.05em;display:block;margin-bottom:4px}
+    .table-tile-status{font-size:0.68rem;text-transform:uppercase;letter-spacing:0.1em;font-weight:700;padding:2px 8px;border-radius:20px}
+    .badge-available{background:rgba(39,192,106,0.15);color:var(--available)}
+    .badge-occupied {background:rgba(232,96,44,0.15); color:var(--occupied)}
+    .badge-dirty    {background:rgba(245,197,24,0.15); color:var(--dirty)}
+    .badge-closed   {background:rgba(68,68,68,0.3);    color:var(--muted)}
+
+    /* Active order count on occupied tables */
+    .tile-order-count{
+      position:absolute;top:8px;right:8px;
+      background:var(--occupied);color:#fff;
+      font-size:0.65rem;font-weight:700;
+      width:20px;height:20px;border-radius:50%;
+      display:flex;align-items:center;justify-content:center;
+    }
+
+    /* Status action buttons below each tile */
+    .tile-actions{display:flex;gap:6px;margin-top:10px;justify-content:center;flex-wrap:wrap}
+    .tile-btn{font-size:0.68rem;font-weight:600;padding:4px 8px;border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:5px;cursor:pointer;font-family:var(--font-body);transition:all 0.15s;white-space:nowrap}
+    .tile-btn:hover{border-color:var(--accent);color:var(--accent)}
+    .tile-btn.btn-available:hover{border-color:var(--available);color:var(--available)}
+    .tile-btn.btn-dirty:hover{border-color:var(--dirty);color:var(--dirty)}
+    .tile-btn.btn-closed:hover{border-color:var(--closed);color:var(--muted)}
+
+    /* ── QR PANEL ── */
+    .qr-panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px;position:sticky;top:24px}
+    .qr-panel-title{font-family:var(--font-head);font-size:1.3rem;letter-spacing:0.06em;color:var(--accent);margin-bottom:6px}
+    .qr-panel-sub{font-size:0.8rem;color:var(--muted);margin-bottom:20px}
+
+    /* Table selector inside QR panel */
+    .qr-select-label{font-size:0.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;display:block}
+    .qr-select{width:100%;background:var(--card);border:2px solid var(--border);border-radius:8px;padding:10px 14px;color:var(--text);font-family:var(--font-body);font-size:0.95rem;outline:none;cursor:pointer;transition:border-color 0.2s;margin-bottom:16px}
+    .qr-select:focus{border-color:var(--accent)}
+    option{background:var(--card)}
+
+    /* QR code display box */
+    #qr-display{background:#fff;border-radius:10px;padding:16px;text-align:center;margin-bottom:14px;min-height:160px;display:flex;align-items:center;justify-content:center}
+    #qr-canvas{display:block;margin:0 auto}
+    .qr-table-label{font-size:0.72rem;color:var(--muted);text-align:center;margin-bottom:14px}
+    .qr-data-string{font-size:0.65rem;color:var(--muted);text-align:center;word-break:break-all;margin-bottom:14px;padding:6px;background:var(--card);border-radius:6px;font-family:monospace}
+
+    .btn-print-qr{width:100%;padding:11px 20px;border:none;border-radius:8px;background:linear-gradient(135deg,#f5c518,#e8a838);color:#1a1000;font-family:var(--font-body);font-weight:700;font-size:0.9rem;cursor:pointer;transition:opacity 0.2s;margin-bottom:8px}
+    .btn-print-qr:hover{opacity:0.88}
+    .btn-print-all{width:100%;padding:10px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--muted);font-family:var(--font-body);font-weight:600;font-size:0.85rem;cursor:pointer;transition:border-color 0.15s,color 0.15s}
+    .btn-print-all:hover{border-color:var(--accent);color:var(--accent)}
+
+    /* ── STATS ROW ── */
+    .stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:24px}
+    .stat-box{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center}
+    .stat-num{font-family:var(--font-head);font-size:2rem;line-height:1}
+    .stat-lbl{font-size:0.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-top:2px}
+
+    /* ── PRINT STYLES ── */
+    @media print{
+      body>*{display:none!important}
+      #print-area{display:block!important}
+      #print-area{font-family:'Courier New',monospace;font-size:11px;color:#000;background:#fff}
+      .print-qr-item{page-break-inside:avoid;text-align:center;padding:20px;margin-bottom:10px;border:1px dashed #ccc;border-radius:8px}
+      .print-qr-label{font-size:16px;font-weight:900;letter-spacing:2px;margin-bottom:8px;display:block}
+      .print-qr-url{font-size:9px;color:#666;margin-top:6px;word-break:break-all}
+      .print-qr-instr{font-size:10px;color:#444;margin-top:4px}
+    }
+    #print-area{display:none}
+  </style>
+</head>
+<body>
+
+<div class="top-bar">
+  <div class="page-logo">UMAMI <span>TABLES</span></div>
+  <div class="top-status">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-text">Connecting…</span>
+  </div>
+</div>
+
+<div class="page-body">
+
+  <!-- LEFT: Table map -->
+  <div>
+    <!-- Stats row -->
+    <div class="stats-row">
+      <div class="stat-box"><div class="stat-num" id="cnt-available" style="color:var(--available)">0</div><div class="stat-lbl">Available</div></div>
+      <div class="stat-box"><div class="stat-num" id="cnt-occupied"  style="color:var(--occupied)">0</div><div class="stat-lbl">Occupied</div></div>
+      <div class="stat-box"><div class="stat-num" id="cnt-dirty"     style="color:var(--dirty)">0</div><div class="stat-lbl">Needs Clean</div></div>
+      <div class="stat-box"><div class="stat-num" id="cnt-closed"    style="color:var(--muted)">0</div><div class="stat-lbl">Closed</div></div>
+    </div>
+
+    <div class="table-map-wrap">
+      <h2 class="section-title">🗺 Table Map</h2>
+
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--available)"></div> Available</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--occupied)"></div> Occupied</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--dirty)"></div> Needs Cleaning</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--closed)"></div> Closed</div>
+      </div>
+
+      <div class="tables-grid" id="tables-grid">
+        <!-- tiles rendered by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: QR code generator panel -->
+  <div class="qr-panel">
+    <h2 class="qr-panel-title">📱 QR Codes</h2>
+    <p class="qr-panel-sub">Generate a unique QR code for each table. Print and place it on the table — customers scan it to auto-identify their seat.</p>
+
+    <span class="qr-select-label">Select Table</span>
+    <select class="qr-select" id="qr-table-select" onchange="generateQR()">
+      <!-- options added by JS -->
+    </select>
+
+    <div id="qr-display">
+      <canvas id="qr-canvas" width="180" height="180"></canvas>
+    </div>
+    <p class="qr-table-label" id="qr-table-label">Select a table above</p>
+    <p class="qr-data-string" id="qr-data-string">—</p>
+
+    <button class="btn-print-qr"  onclick="printOneQR()">🖨 Print This QR Code</button>
+    <button class="btn-print-all" onclick="printAllQR()">🖨 Print All 8 QR Codes</button>
+  </div>
+
+</div><!-- end page-body -->
+
+<!-- Print area (hidden on screen) -->
+<div id="print-area"></div>
+
+<!-- QR code generator library -->
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
+<script>
+  /* ── FIREBASE ─────────────────────────────────────────── */
+  const firebaseConfig = {
+    apiKey:"AIzaSyD2yOZznSm0jpmq4EaPA95JnfvcZWN2Ec0",
+    authDomain:"create-b4da9.firebaseapp.com",
+    databaseURL:"https://create-b4da9-default-rtdb.firebaseio.com",
+    projectId:"create-b4da9",
+    storageBucket:"create-b4da9.firebasestorage.app",
+    messagingSenderId:"301948845653",
+    appId:"1:301948845653:web:c5ed5b440727bf1ecbdedc"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+  db.ref('.info/connected').on('value', snap=>{
+    const ok=snap.val();
+    document.getElementById('status-dot').className   = 'status-dot '+(ok?'connected':'disconnected');
+    document.getElementById('status-text').textContent = ok?'Live · Auto-updating':'Offline';
+  });
+
+  /* ── CONFIG — define your tables here ─────────────────── */
+  const TABLES = [
+    {id:'table-1', name:'Table 1', seats:2},
+    {id:'table-2', name:'Table 2', seats:2},
+    {id:'table-3', name:'Table 3', seats:4},
+    {id:'table-4', name:'Table 4', seats:4},
+    {id:'table-5', name:'Table 5', seats:4},
+    {id:'table-6', name:'Table 6', seats:6},
+    {id:'table-7', name:'Table 7', seats:6},
+    {id:'table-8', name:'Table 8', seats:8},
+  ];
+
+  /* ── STATE ────────────────────────────────────────────── */
+  // tableStatuses: { tableId: { status, table, since, activeOrders } }
+  const tableStatuses = {};
+  TABLES.forEach(t => { tableStatuses[t.id] = { status:'available', table:t.name }; });
+
+  /* ── BUILD SELECT ─────────────────────────────────────── */
+  const sel = document.getElementById('qr-table-select');
+  TABLES.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t.name; opt.textContent = t.name + ' ('+t.seats+' seats)';
+    sel.appendChild(opt);
+  });
+
+  /* ── QR CODE GENERATION ───────────────────────────────── */
+  // QR data format: "UMAMI-TABLE:Table 1"
+  // index.html reads this prefix to auto-identify the table
+  function getQRData(tableName){
+    return 'UMAMI-TABLE:' + tableName;
+  }
+
+  function generateQR(){
+    const tableName = document.getElementById('qr-table-select').value;
+    const data      = getQRData(tableName);
+    const canvas    = document.getElementById('qr-canvas');
+
+    QRCode.toCanvas(canvas, data, {
+      width:180, margin:1,
+      color:{ dark:'#000000', light:'#ffffff' }
+    }, err => { if(err) console.error(err); });
+
+    document.getElementById('qr-table-label').textContent = tableName;
+    document.getElementById('qr-data-string').textContent = data;
+  }
+
+  /* ── PRINT ONE QR ─────────────────────────────────────── */
+  function printOneQR(){
+    const tableName = document.getElementById('qr-table-select').value;
+    const canvas    = document.getElementById('qr-canvas');
+    const dataUrl   = canvas.toDataURL('image/png');
+    buildPrintArea([{name:tableName, dataUrl}]);
+    window.print();
+  }
+
+  /* ── PRINT ALL 8 QR CODES ─────────────────────────────── */
+  async function printAllQR(){
+    const items = [];
+    for(const t of TABLES){
+      const data   = getQRData(t.name);
+      const canvas = document.createElement('canvas');
+      await QRCode.toCanvas(canvas, data, {width:160, margin:1, color:{dark:'#000',light:'#fff'}});
+      items.push({name:t.name, dataUrl:canvas.toDataURL('image/png')});
+    }
+    buildPrintArea(items);
+    window.print();
+  }
+
+  function buildPrintArea(items){
+    const area = document.getElementById('print-area');
+    area.innerHTML = items.map(item => `
+      <div class="print-qr-item">
+        <span class="print-qr-label">UMAMI · ${item.name}</span>
+        <img src="${item.dataUrl}" width="140" height="140" style="display:block;margin:8px auto;" />
+        <div class="print-qr-instr">Scan to order · Scan per bestellen</div>
+        <div class="print-qr-url">${getQRData(item.name)}</div>
+      </div>`).join('');
+  }
+
+  /* ── TABLE MAP RENDER ─────────────────────────────────── */
+  function renderTableMap(){
+    const grid = document.getElementById('tables-grid');
+    grid.innerHTML = '';
+    const counts = {available:0, occupied:0, dirty:0, closed:0};
+
+    TABLES.forEach(t => {
+      const state = tableStatuses[t.id] || {status:'available'};
+      const s     = state.status || 'available';
+      counts[s]   = (counts[s]||0) + 1;
+
+      const activeOrders = state.activeOrders || 0;
+
+      // Icon per status
+      const icons = {available:'🟢', occupied:'🔴', dirty:'🟡', closed:'⚫'};
+
+      const tile = document.createElement('div');
+      tile.className = 'table-tile ' + s;
+      tile.innerHTML = `
+        ${s==='occupied' && activeOrders>0 ? `<div class="tile-order-count">${activeOrders}</div>` : ''}
+        <span class="table-tile-icon">${s==='available'?'🪑':s==='occupied'?'👥':s==='dirty'?'🧹':'🚫'}</span>
+        <span class="table-tile-name">${t.name}</span>
+        <span class="table-tile-status badge-${s}">${s==='dirty'?'needs clean':s}</span>
+        <div class="tile-actions">
+          ${s!=='available' ? `<button class="tile-btn btn-available" onclick="setTableStatus('${t.id}','${t.name}','available')">✓ Available</button>` : ''}
+          ${s!=='dirty'     ? `<button class="tile-btn btn-dirty"     onclick="setTableStatus('${t.id}','${t.name}','dirty')">🧹 Needs Clean</button>` : ''}
+          ${s!=='closed'    ? `<button class="tile-btn btn-closed"    onclick="setTableStatus('${t.id}','${t.name}','closed')">🚫 Close</button>` : ''}
+        </div>`;
+      grid.appendChild(tile);
+    });
+
+    // Update stat boxes
+    document.getElementById('cnt-available').textContent = counts.available||0;
+    document.getElementById('cnt-occupied').textContent  = counts.occupied||0;
+    document.getElementById('cnt-dirty').textContent     = counts.dirty||0;
+    document.getElementById('cnt-closed').textContent    = counts.closed||0;
+  }
+
+  /* ── SET TABLE STATUS (manual staff control) ─────────── */
+  function setTableStatus(tableId, tableName, newStatus){
+    db.ref('tables/'+tableId).update({status:newStatus, table:tableName, updatedAt:Date.now()})
+      .catch(e=>console.error(e));
+  }
+
+  /* ── LISTEN TO TABLE STATUS CHANGES ──────────────────── */
+  db.ref('tables').on('value', snap=>{
+    const data = snap.val() || {};
+    TABLES.forEach(t => {
+      if(data[t.id]){
+        tableStatuses[t.id] = {...tableStatuses[t.id], ...data[t.id]};
+      }
+    });
+    renderTableMap();
+  });
+
+  /* ── LISTEN TO ORDERS — count active per table ────────── */
+  db.ref('orders').on('value', snap=>{
+    // Reset active order counts
+    TABLES.forEach(t => { tableStatuses[t.id].activeOrders = 0; });
+
+    const all = snap.val() || {};
+    Object.values(all).forEach(order => {
+      if(!order.table || order.orderType==='takeout') return;
+      if(order.status==='served' || order.status==='cancelled') return;
+      // Find matching table
+      const found = TABLES.find(t => t.name.toLowerCase()===order.table.toLowerCase());
+      if(found){
+        tableStatuses[found.id].activeOrders = (tableStatuses[found.id].activeOrders||0) + 1;
+        // If table was available but now has orders → mark occupied
+        if(tableStatuses[found.id].status==='available'){
+          tableStatuses[found.id].status = 'occupied';
+        }
+      }
+    });
+    renderTableMap();
+  });
+
+  /* ── INIT ─────────────────────────────────────────────── */
+  renderTableMap();
+  generateQR(); // show QR for first table by default
+</script>
+</body>
+</html>
